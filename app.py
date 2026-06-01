@@ -18,12 +18,27 @@ st.set_page_config(
 )
 
 # Estilização customizada para a mesa de trading
+# Estilização customizada - Corrigindo o contraste para leitura clara
 st.markdown("""
 <style>
+    /* Fundo da página */
     .main { background-color: #0f121d; }
-    .stMetric { background-color: #161a27; padding: 15px; border-radius: 8px; border-left: 5px solid #00fff2; }
+    
+    /* Blocos de métrica (os quadrados) */
+    [data-testid="stMetric"] {
+        background-color: #262730; /* Um tom de cinza mais claro para dar contraste */
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #00fff2;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+    }
+    
+    /* Texto das métricas */
+    [data-testid="stMetricLabel"] { color: #ffffff !important; font-size: 1.1rem; }
+    [data-testid="stMetricValue"] { color: #00fff2 !important; font-size: 1.5rem; }
+    
+    /* Ajuste de botões */
     div.stButton > button:first-child { background-color: #00fff2; color: #0f121d; font-weight: bold; }
-    .reportview-container .main .block-container { padding-top: 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
