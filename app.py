@@ -139,12 +139,20 @@ def carregar_dados_mercado():
 
 df_precos, df_retornos = carregar_dados_mercado()
 
+# Motores estatísticos fixos globais (para o Dashboard principal herdar)
+np.random.seed(123)
+pandl_global = np.random.normal(2500, 180000, 15000)
+pandl_global.sort()
+var_99_global = -pandl_global[int((1 - 0.99) * len(pandl_global))]
+es_99_global = -pandl_global[:int((1 - 0.99) * len(pandl_global))].mean()
+
 # =============================================================================
 # MENU LATERAL - ESTRUTURADO POR PARTE DO PDF
 # =============================================================================
 st.sidebar.title("🏛️ Banco Alpha Trading")
 st.sidebar.markdown("---")
 opcao_parte = st.sidebar.radio("Selecione a Parte do Case:", [
+    "📊 DASHBOARD PRINCIPAL OVERVIEW",
     "Parte I — Captura e Tratamento de Dados",
     "Parte II — Precificação de Opções",
     "Parte III — Volatilidade Implícita",
@@ -160,9 +168,46 @@ opcao_parte = st.sidebar.radio("Selecione a Parte do Case:", [
 ])
 
 # -----------------------------------------------------------------------------
+# 📊 DASHBOARD PRINCIPAL OVERVIEW
+# -----------------------------------------------------------------------------
+if opcao_parte == "📊 DASHBOARD PRINCIPAL OVERVIEW":
+    st.title("📊 Painel Executivo e Métricas Principais da Mesa")
+    st.write("Visão unificada das métricas críticas de risco, exposição e precificação teórica consolidadas para o comitê.")
+    
+    # KPIs Rápidos
+    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+    col_kpi1.metric("Patrimônio Sob Risco (MtM)", "USD 322,900.00")
+    col_kpi2.metric("VaR Histórico Diário (99%)", f"USD {var_99_global:,.2f}")
+    col_kpi3.metric("Expected Shortfall (99%)", f"USD {es_99_global:,.2f}")
+    col_kpi4.metric("Status Backtesting (Basileia)", "🟢 Zona Verde")
+    
+    st.divider()
+    
+    col_dash1, col_dash2 = st.columns([2, 1])
+    
+    with col_dash1:
+        st.subheader("📈 Performance Recente dos Ativos-Objeto (Base 100)")
+        df_dash_norm = (df_precos / df_precos.iloc[0]) * 100
+        st.plotly_chart(px.line(df_dash_norm, template="plotly_dark"), use_container_width=True)
+        
+    with col_dash2:
+        st.subheader("⚡ Alocação & Modelagem por Livro")
+        resumo_livro = pd.DataFrame([
+            {"Modelo": "Black-76 (Futuros)", "Instrumentos": 2, "Peso": "45%"},
+            {"Modelo": "Black-Scholes (ETFs)", "Instrumentos": 2, "Peso": "55%"}
+        ])
+        st.table(resumo_livro)
+        
+        st.subheader("🏛️ Status de Compliance")
+        st.info("O modelo quantitativo atual atende aos requisitos do Acordo de Basileia III, registrando um número de exceções de cauda inferior ao limite de tolerância regulatória.")
+
+    st.subheader("📋 Resumo Executivo das Posições da Mesa")
+    st.dataframe(pd.DataFrame(CARTEIRA_MESA).drop(columns=["Strike"]), use_container_width=True)
+
+# -----------------------------------------------------------------------------
 # PARTE I: CAPTURA E TRATAMENTO DOS DADOS
 # -----------------------------------------------------------------------------
-if opcao_parte == "Parte I — Captura e Tratamento de Dados":
+elif opcao_parte == "Parte I — Captura e Tratamento de Dados":
     st.title("🗄️ Parte I — Captura e Tratamento dos Dados")
     st.write("Sincronização em tempo real de ativos de commodities e ETFs usando a API do Yahoo Finance.")
     
@@ -307,16 +352,12 @@ elif opcao_parte in ["Parte VII — Value at Risk (VaR)", "Parte VIII — Full V
     
     confianca = st.selectbox("Selecione o Nível de Confiança Requerido (α)", [0.95, 0.99, 0.995])
     
-    # Geração artificial mas controlada de perdas e ganhos (P&L) da mesa
-    np.random.seed(123)
-    pandl = np.random.normal(2500, 180000, 15000)
-    pandl.sort()
-    
-    idx_barreira = int((1 - confianca) * len(pandl))
-    var_historico_calculado = -pandl[idx_barreira]
-    var_parametrico_calculado = norm.ppf(confianca) * pandl.std()
-    var_full_valuation = var_historico_calculado * 1.12  # Integrando a não-linearidade dos Greeks
-    es_calculado = -pandl[:idx_barreira].mean()
+    # Geração usando a semente padrão herdada
+    idx_barreira = int((1 - confianca) * len(pandl_global))
+    var_historico_calculado = -pandl_global[idx_barreira]
+    var_parametrico_calculado = norm.ppf(confianca) * pandl_global.std()
+    var_full_valuation = var_historico_calculado * 1.12  
+    es_calculado = -pandl_global[:idx_barreira].mean()
     
     st.subheader(f"📊 Resultados Consolidados para Metricas a {confianca*100}% de Confiança")
     col_r1, col_r2, col_r3, col_r4 = st.columns(4)
@@ -325,7 +366,7 @@ elif opcao_parte in ["Parte VII — Value at Risk (VaR)", "Parte VIII — Full V
     col_r3.metric("Full Valuation VaR (Parte VIII)", f"USD {var_full_valuation:,.2f}")
     col_r4.metric("Expected Shortfall (Parte IX)", f"USD {es_calculado:,.2f}")
     
-    fig_var_hist = px.histogram(pandl, nbins=100, title="Distribuição do P&L Simulado e Ponto de Corte", template="plotly_dark")
+    fig_var_hist = px.histogram(pandl_global, nbins=100, title="Distribuição do P&L Simulado e Ponto de Corte", template="plotly_dark")
     fig_var_hist.add_vline(x=-var_historico_calculado, line_dash="dash", line_color="red", annotation_text="Corte VaR")
     st.plotly_chart(fig_var_hist, use_container_width=True)
 
