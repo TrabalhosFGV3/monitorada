@@ -247,51 +247,79 @@ if menu == "1. Tickers & Captura de Dados":
 # -----------------------------------------------------------------------------
 # TELA 2: CARTEIRA DA MESA & GREEKS (MESA CONSOLIDADA)
 # -----------------------------------------------------------------------------
-elif menu == "2. Análise de Posição da Mesa":
+# --- TELA 2: ANÁLISE DE POSIÇÃO DA MESA (CORRIGIDA) ---
+if menu == "2. Análise de Posição da Mesa":
     st.title("💼 Carteira Hipotética e Gerenciamento de Greeks")
-    st.write("Abaixo estão consolidadas as posições operacionais passadas pela Diretoria de Risco.")
+    st.write("Cálculo de exposição direcional e sensibilidade à volatilidade (Vega).")
     
-    df_carteira = pd.DataFrame(CARTEIRA_MESA)
-    st.dataframe(df_carteira, use_container_width=True)
-    
-    st.subheader("📊 Cálculo Dinâmico de Exposição por Ativo")
-    st.markdown("Altere a volatilidade de mercado padrão para estimar as métricas de sensibilidade das Opções e Futuros:")
-    
-    sigma_mercado = st.slider("Volatilidade de Mercado Padrão para Simulação", 0.05, 1.50, 0.25)
-    taxa_juros = st.number_input("Taxa Selic/Risk-free Anualizada (r)", value=0.10)
-    
-    greeks_calculados = []
-    for item in CARTEIRA_MESA:
-        is_fut = True if item["Tipo_Modelo"] == "Black-76" else False
-        res_greeks = calcular_greeks(S=100.0, K=100.0, T=0.25, r=taxa_juros, sigma=sigma_mercado, is_future=is_fut, option_type="call")
-        
-        # Ponderação direcional baseada na posição vendida vs comprada
-        fator_direcao = 1 if item["Direção"] == "Comprado" else -1
-        
-        greeks_calculados.append({
-            "Ativo": item["Ativo"],
-            "Quantidade": item["Quantidade"],
-            "Delta Total": res_greeks["Delta"] * item["Quantidade"] * fator_direcao,
-            "Gamma Total": res_greeks["Gamma"] * item["Quantidade"] * fator_direcao,
-            "Vega Portfólio": res_greeks["Vega"] * item["Quantidade"] * fator_direcao,
-            "Theta Diário": res_greeks["Theta"] * item["Quantidade"] * fator_direcao
-        })
-        
-    df_greeks_final = pd.DataFrame(greeks_calculados)
-    st.table(df_greeks_final)
-    
-    # KPIs Resumo para responder as perguntas do PDF
-    st.subheader("💡 Respostas para o Relatório Técnico")
-    total_vega = df_greeks_final["Vega Portfólio"].sum()
-    
-    c_v1, c_v2 = st.columns(2)
-    if total_vega > 0:
-        c_v1.success(f"A carteira está **COMPRADA em Volatilidade** (Vega Total: {total_vega:.2f})")
-        c_v2.info("📈 O portfólio **GANHA** com o aumento da volatilidade implícita do mercado.")
-    else:
-        c_v1.warning(f"A carteira está **VENDIDA em Volatilidade** (Vega Total: {total_vega:.2f})")
-        c_v2.info("📉 O portfólio **PERDE** com o aumento da volatilidade implícita do mercado.")
+    # 1. Parâmetros Globais para Simulação de Sensibilidade
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1: 
+        sigma_sim = st.slider("Volatilidade Implícita (σ) para Greeks", 0.01, 1.50, 0.30)
+    with col_p2: 
+        r_sim = st.number_input("Taxa de Juros (r) - Livre de Risco", value=0.05)
+    with col_p3:
+        S_base = st.number_input("Preço Base Ativo/Futuro (Normalizado)", value=100.0)
 
+    # 2. Processamento da Carteira Verbatim do PDF
+    greeks_final = []
+    
+    for item in CARTEIRA_MESA:
+        # Define se usa Black-76 ou Black-Scholes conforme o PDF
+        is_future = True if item["Tipo_Modelo"] == "Black-76" else False
+        
+        # Converte vencimento de texto para ano (T)
+        t_map = {"2 meses": 2/12, "3 meses": 3/12, "4 meses": 4/12, "6 meses": 6/12, 
+                 "90 dias": 90/365, "120 dias": 120/365, "180 dias": 180/365}
+        T_anos = t_map.get(item["Vencimento"], 0.25)
+        
+        # Identifica tipo de opção
+        opt_type = "call" if "Call" in item["Instrumento"] else "put"
+        
+        # Calcula Greeks individuais
+        # Nota: Futuros puramente direcionais têm Delta=1 e Gamma/Vega=0
+        if "Futuro" in item["Instrumento"]:
+            g = {"Delta": 1.0, "Gamma": 0.0, "Vega": 0.0, "Theta": 0.0}
+        else:
+            g = calcular_greeks(S_base, S_base, T_anos, r_sim, sigma_sim, is_future, opt_type)
+        
+        # Ajusta pelo Sinal da Direção (Comprado + / Vendido -)
+        fator = 1 if item["Direção"] == "Comprado" else -1
+        qtd = item["Quantidade"]
+        
+        greeks_final.append({
+            "Ativo": item["Ativo"],
+            "Instrumento": item["Instrumento"],
+            "Qtd": qtd,
+            "Delta Total": g["Delta"] * qtd * fator,
+            "Gamma Total": g["Gamma"] * qtd * fator,
+            "Vega Portfólio": g["Vega"] * qtd * fator,
+            "Theta Diário": g["Theta"] * qtd * fator
+        })
+
+    # 3. Exibição da Tabela de Risco
+    df_greeks = pd.DataFrame(greeks_final)
+    st.subheader("📊 Matriz de Exposição e Risco não Linear")
+    st.dataframe(df_greeks.style.format({
+        "Delta Total": "{:.2f}", "Gamma Total": "{:.4f}", 
+        "Vega Portfólio": "{:.2f}", "Theta Diário": "{:.2f}"
+    }), use_container_width=True)
+
+    # 4. Respostas para as Perguntas Obrigatórias (Seção 10 e 17)
+    st.divider()
+    vega_total = df_greeks["Vega Portfólio"].sum()
+    maior_vega = df_greeks.loc[df_greeks["Vega Portfólio"].abs().idxmax()]
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.info(f"**Exposição Direcional (Delta):** {df_greeks['Delta Total'].sum():,.2f}")
+        st.write(f"**Aposta em Volatilidade (Vega):** {vega_total:,.2f}")
+    with c2:
+        st.write(f"**Opção com Maior Vega:** {maior_vega['Ativo']} ({maior_vega['Instrumento']})")
+        if vega_total > 0:
+            st.success("A carteira GANHA com o aumento da volatilidade implícita.")
+        else:
+            st.warning("A carteira PERDE com o aumento da volatilidade implícita.")
 # -----------------------------------------------------------------------------
 # TELA 3: COMPARAÇÃO DOS MÉTODOS NUMÉRICOS
 # -----------------------------------------------------------------------------
